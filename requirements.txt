@@ -1,0 +1,35 @@
+# Core OCR and AI
+paddleocr
+paddlepaddle
+paddlex
+opencv-contrib-python
+pillow
+
+# API Framework
+fastapi
+uvicorn
+python-multipart
+pydantic
+pydantic-settings
+
+# Data Processing
+pandas
+openpyxl
+xlsxwriter
+numpy
+
+# PDF Processing
+pdf2image
+PyMuPDF
+
+# Utilities
+python-dotenv
+loguru
+aiofiles
+httpx
+
+# Development
+pytest
+pytest-cov
+black
+isort
