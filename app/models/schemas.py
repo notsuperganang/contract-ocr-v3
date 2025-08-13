@@ -1,59 +1,59 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime, date
+from datetime import datetime
 
 # === Customer Information ===
 class Perwakilan(BaseModel):
     nama: Optional[str] = None
     jabatan: Optional[str] = None
 
+class KontakPersonPelanggan(BaseModel):
+    nama: Optional[str] = None
+    jabatan: Optional[str] = None
+    email: Optional[str] = None
+    telepon: Optional[str] = None
+
 class InformasiPelanggan(BaseModel):
     nama_pelanggan: Optional[str] = None
     alamat: Optional[str] = None
     npwp: Optional[str] = None
     perwakilan: Optional[Perwakilan] = None
-    kontak_person: Optional[str] = None
+    kontak_person: Optional[KontakPersonPelanggan] = None
 
 # === Contract Information ===
 class JangkaWaktu(BaseModel):
-    mulai: Optional[str] = None  # Format: YYYY-MM-DD
-    akhir: Optional[str] = None  # Format: YYYY-MM-DD
+    mulai: Optional[str] = None  # YYYY-MM-DD
+    akhir: Optional[str] = None  # YYYY-MM-DD
 
-class InformasiKontrak(BaseModel):
-    nomor_kontrak: Optional[str] = None
-    jangka_waktu: Optional[JangkaWaktu] = None
+class KontakPersonTelkom(BaseModel):
+    nama: Optional[str] = None
+    jabatan: Optional[str] = None
+    email: Optional[str] = None
+    telepon: Optional[str] = None
 
 # === Service Information ===
 class LayananUtama(BaseModel):
-    connectivity_telkom: Optional[int] = 0
-    non_connectivity_telkom: Optional[int] = 0
-    bundling: Optional[int] = 0
+    connectivity_telkom: int = 0
+    non_connectivity_telkom: int = 0
+    bundling: int = 0
 
 class RincianLayanan(BaseModel):
-    NO: Optional[str] = None
-    LAYANAN: Optional[str] = None
-    JUMLAH: Optional[str] = None
-    LOKASI: Optional[str] = None
-    ALAMAT_INSTALASI: Optional[str] = None
-    PIC: Optional[str] = None
-    LEBAR_PITA: Optional[str] = None
-    INSTALASI: Optional[str] = None
-    BULANAN: Optional[str] = None
-    TAHUNAN: Optional[str] = None
-    KET: Optional[str] = None
+    biaya_instalasi: float = 0.0
+    biaya_langganan_tahunan: float = 0.0
+    tata_cara_pembayaran: Optional[str] = None
 
 # === Main Extraction Result ===
 class TelkomContractData(BaseModel):
+    # inti kontrak
     informasi_pelanggan: Optional[InformasiPelanggan] = None
-    informasi_kontrak: Optional[InformasiKontrak] = None
     layanan_utama: Optional[LayananUtama] = None
-    rincian_layanan_tabel: Optional[List[RincianLayanan]] = []
+    rincian_layanan: List[RincianLayanan] = Field(default_factory=list)
     tata_cara_pembayaran: Optional[str] = None
-    kontak_person_telkom: Optional[str] = None
-    
-    # Additional metadata
-    extraction_timestamp: Optional[datetime] = Field(default_factory=datetime.now)
-    confidence_score: Optional[float] = None
+    kontak_person_telkom: Optional[KontakPersonTelkom] = None
+    jangka_waktu: Optional[JangkaWaktu] = None
+
+    # metadata ekstraksi
+    extraction_timestamp: datetime = Field(default_factory=datetime.now)
     processing_time_seconds: Optional[float] = None
 
 # === API Request/Response Models ===
