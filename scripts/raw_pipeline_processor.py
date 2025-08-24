@@ -63,7 +63,7 @@ class PipelineProcessor:
                 use_doc_orientation_classify=settings.use_doc_orientation_classify,
                 use_doc_unwarping=settings.use_doc_unwarping,
                 use_textline_orientation=settings.use_textline_orientation,
-                use_table_recognition=settings.use_table_recognition,
+                use_table_recognition=settings.use_table_recognition,  # False
                 use_seal_recognition=settings.use_seal_recognition,  # False
                 use_formula_recognition=settings.use_formula_recognition,  # False
                 
@@ -275,8 +275,6 @@ def main():
     # Define test files to process
     test_files = [
         "tests/test_samples/KB SMKN 1 BIREUN TTD 2024 VALIDASI.pdf",
-        "tests/test_samples/KONTRAK ABIPRAYA PELITA KSO 2022 validasi.pdf", 
-        "tests/test_samples/KONTRAK PT LKMS MAHIRAH MUAMALAH  2025 VALIDASI.pdf"
     ]
     
     processor = None

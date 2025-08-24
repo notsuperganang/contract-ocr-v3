@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     use_textline_orientation: bool = True     # Handle slight skew
     
     # Recognition Features
-    use_table_recognition: bool = True
+    use_table_recognition: bool = False       # Disable table recognition for contracts
     use_seal_recognition: bool = False        # Disable seal recognition for contracts  
     use_formula_recognition: bool = False     # Disable formula recognition for contracts
     
