@@ -48,34 +48,56 @@ class PipelineProcessor:
             raise
     
     def _initialize_pipeline(self):
-        """Initialize PP-StructureV3 pipeline with our configuration"""
+        """Initialize PP-StructureV3 pipeline with targeted improvements for missing '1' digit"""
         try:
             logger.info("Initializing PP-StructureV3 pipeline...")
             t_load_start = time.perf_counter()
             
             self.pipeline = PPStructureV3(
-                # Model configuration - using our config
+                # Model configuration
                 text_recognition_model_name=settings.text_recognition_model,
                 text_detection_model_name=settings.text_detection_model,
                 layout_detection_model_name=settings.layout_detection_model,
                 
-                # Processing options - using our config 
+                # Document processing
                 use_doc_orientation_classify=settings.use_doc_orientation_classify,
                 use_doc_unwarping=settings.use_doc_unwarping,
                 use_textline_orientation=settings.use_textline_orientation,
-                use_table_recognition=settings.use_table_recognition,  # False
-                use_seal_recognition=settings.use_seal_recognition,  # False
+                
+                # ✅ TABLE RECOGNITION - ENABLED FOR SERVICE COUNTS
+                use_table_recognition=settings.use_table_recognition,  # True
+                
+                # Other recognition features
+                use_seal_recognition=settings.use_seal_recognition,    # False
                 use_formula_recognition=settings.use_formula_recognition,  # False
                 
+                # ✅ TARGETED TEXT DETECTION - MATCHING CONFIG.PY EXACTLY
+                text_det_thresh=settings.text_det_thresh,              # 0.05 (hyper-aggressive)
+                text_det_box_thresh=settings.text_det_box_thresh,      # 0.2 (ultra-low)
+                text_det_unclip_ratio=settings.text_det_unclip_ratio,  # 1.8 (EXPANDED capture)
+                text_rec_score_thresh=settings.text_rec_score_thresh,  # 0.0 (accept all)
+                text_det_limit_side_len=settings.text_det_limit_side_len,  # 1600 (higher resolution)
+                text_det_limit_type=settings.text_det_limit_type,      # "max"
+                
+                # ✅ LAYOUT DETECTION - ENHANCED FOR EDGE CASES
+                layout_threshold=settings.layout_threshold,            # 0.4 (lower for more elements)
+                layout_nms=settings.layout_nms,                       # True (keep accuracy)
+                
+                # ✅ TEXT RECOGNITION - IMPROVED BATCH PROCESSING
+                text_recognition_batch_size=settings.text_recognition_batch_size,  # 4 (efficiency)
+                
                 # Performance settings
-                enable_hpi=settings.enable_hpi,  # False for compatibility
-                device=settings.device  # CPU
+                enable_hpi=settings.enable_hpi,    # True (for accuracy)
+                device=settings.device             # CPU
             )
             
             t_load_end = time.perf_counter()
             t_load = t_load_end - t_load_start
             
-            logger.info(f"Pipeline initialized successfully (load time: {t_load:.3f}s, device: {settings.device})")
+            logger.info(f"Pipeline initialized with TARGETED improvements (load time: {t_load:.3f}s)")
+            logger.info(f"Text detection: thresh=0.05, box_thresh=0.2, unclip_ratio=1.8, resolution=1600")
+            logger.info(f"Layout detection: threshold=0.4, batch_size=4")
+            logger.info(f"Target: Missing '1' for Non-Connectivity TELKOM")
             
         except Exception as e:
             logger.error(f"Failed to initialize pipeline: {str(e)}")
@@ -110,7 +132,7 @@ class PipelineProcessor:
             logger.error(f"Error cutting PDF {input_path}: {str(e)}")
             return False
     
-    def pdf_to_images(self, pdf_path: str, dpi: int = 300) -> list:
+    def pdf_to_images(self, pdf_path: str, dpi: int = 400) -> list:
         """Convert PDF to images using pdf2image"""
         try:
             logger.info(f"Converting PDF to images @ {dpi} DPI: {os.path.basename(pdf_path)}")
@@ -149,7 +171,7 @@ class PipelineProcessor:
                 raise Exception(f"Failed to cut PDF: {pdf_path}")
             
             # Step 2: Convert PDF to images
-            image_paths = self.pdf_to_images(temp_pdf_path, dpi=300)
+            image_paths = self.pdf_to_images(temp_pdf_path, dpi=400)
             if not image_paths:
                 raise Exception(f"Failed to convert PDF to images: {temp_pdf_path}")
             
@@ -274,7 +296,7 @@ def main():
     
     # Define test files to process
     test_files = [
-        "tests/test_samples/KB SMKN 1 BIREUN TTD 2024 VALIDASI.pdf",
+        "tests/test_samples/KONTRAK PT LKMS MAHIRAH MUAMALAH  2025 VALIDASI.pdf",
     ]
     
     processor = None

@@ -30,13 +30,28 @@ class Settings(BaseSettings):
     use_doc_unwarping: bool = False           # Skip untuk speed
     use_textline_orientation: bool = True     # Handle slight skew
     
-    # Recognition Features
-    use_table_recognition: bool = False       # Disable table recognition for contracts
-    use_seal_recognition: bool = False        # Disable seal recognition for contracts  
-    use_formula_recognition: bool = False     # Disable formula recognition for contracts
+    # Recognition Features - FIXES APPLIED
+    use_table_recognition: bool = True        # ✅ ENABLE for service counts extraction
+    use_seal_recognition: bool = False        # Keep disabled for contracts  
+    use_formula_recognition: bool = False     # Keep disabled for contracts
+    
+    # Text Detection Thresholds - TARGETED FOR MISSING ELEMENTS
+    text_det_thresh: float = 0.05            # ✅ Hyper-aggressive for small digits
+    text_det_box_thresh: float = 0.2         # ✅ Ultra-low for tiny boxes
+    text_det_unclip_ratio: float = 1.8       # ✅ INCREASED - capture text slightly outside detected boxes
+    text_rec_score_thresh: float = 0.0       # ✅ Accept all recognized text
+    text_det_limit_side_len: int = 1600      # ✅ INCREASED resolution for better small text
+    text_det_limit_type: str = "max"         # ✅ Max limit type
+    
+    # Text Recognition - IMPROVED FOR FONT VARIATIONS
+    text_recognition_batch_size: int = 4     # ✅ INCREASED batch processing for efficiency
+    
+    # Layout Detection - ENHANCED FOR EDGE CASES  
+    layout_threshold: float = 0.4            # ✅ LOWER threshold to catch more layout elements
+    layout_nms: bool = True                  # ✅ Keep NMS for accuracy
     
     # Performance Optimization
-    enable_hpi: bool = False                  # Disable HPI due to version compatibility
+    enable_hpi: bool = True                   # ✅ ENABLE for better accuracy
     device: str = "cpu"                       # CPU-only production environment
     
     # Logging
