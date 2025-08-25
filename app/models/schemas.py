@@ -40,7 +40,30 @@ class LayananUtama(BaseModel):
 class RincianLayanan(BaseModel):
     biaya_instalasi: float = 0.0
     biaya_langganan_tahunan: float = 0.0
-    tata_cara_pembayaran: Optional[str] = None
+    tata_cara_pembayaran: Optional["TataCaraPembayaran"] = None
+
+# === Payment Method Information ===
+class TerminPayment(BaseModel):
+    """Individual termin payment entry"""
+    termin_number: int = Field(..., description="Termin sequence number (1, 2, 3, etc.)")
+    period: str = Field(..., description="Payment period (e.g., 'Maret 2025', 'Juni 2025')")
+    amount: float = Field(..., description="Payment amount in Rupiah")
+    raw_text: Optional[str] = Field(None, description="Original text for debugging")
+
+class TataCaraPembayaran(BaseModel):
+    """Payment method information supporting multiple payment types"""
+    method_type: str = Field(..., description="Payment method type: 'one_time_charge', 'recurring', 'termin'")
+    
+    # For simple methods (one_time_charge, recurring)
+    description: Optional[str] = Field(None, description="Payment method description for simple methods")
+    
+    # For termin method
+    termin_payments: Optional[List[TerminPayment]] = Field(None, description="List of termin payment entries")
+    total_termin_count: Optional[int] = Field(None, description="Total number of termin payments")
+    total_amount: Optional[float] = Field(None, description="Total amount across all termin payments")
+    
+    # Original raw text for all types
+    raw_text: Optional[str] = Field(None, description="Original extracted text for debugging")
 
 # === Main Extraction Result ===
 class TelkomContractData(BaseModel):
@@ -48,7 +71,7 @@ class TelkomContractData(BaseModel):
     informasi_pelanggan: Optional[InformasiPelanggan] = None
     layanan_utama: Optional[LayananUtama] = None
     rincian_layanan: List[RincianLayanan] = Field(default_factory=list)
-    tata_cara_pembayaran: Optional[str] = None
+    tata_cara_pembayaran: Optional[TataCaraPembayaran] = None
     kontak_person_telkom: Optional[KontakPersonTelkom] = None
     jangka_waktu: Optional[JangkaWaktu] = None
 
