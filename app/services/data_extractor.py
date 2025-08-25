@@ -22,6 +22,7 @@ try:  # Preferred absolute import when package root is on sys.path
         LayananUtama,
         RincianLayanan,
         TataCaraPembayaran,
+        TerminPayment,
         TelkomContractData,
     )
 except ModuleNotFoundError:  # Fallback for direct invocation: python app/services/data_extractor.py
@@ -38,6 +39,7 @@ except ModuleNotFoundError:  # Fallback for direct invocation: python app/servic
         LayananUtama,
         RincianLayanan,
         TataCaraPembayaran,
+        TerminPayment,
         TelkomContractData,
     )
 
@@ -181,8 +183,8 @@ def _detect_payment_type(texts: List[str]) -> tuple[str, str, str]:
     # Cek apakah ada pola termin
     for pattern in termin_patterns:
         if re.search(pattern, normalized_text, re.I):
-            # Jika ada termin, kemungkinan bukan recurring
-            return "one_time_charge", "Pembayaran termin terdeteksi", "medium"
+            # Deteksi termin sebagai method type tersendiri
+            return "termin", "Pembayaran termin terdeteksi", "high"
     
     # Pattern untuk deteksi recurring (Indonesian + English)
     recurring_patterns = [
@@ -224,6 +226,66 @@ def _detect_payment_type(texts: List[str]) -> tuple[str, str, str]:
     
     # Default: tidak dapat menentukan, assume one_time_charge untuk backward compatibility
     return "one_time_charge", "Metode pembayaran tidak terdeteksi", "low"
+
+def _extract_termin_payments(texts: List[str]) -> tuple[List[TerminPayment], int, float]:
+    """
+    Ekstrak daftar pembayaran termin dari teks OCR.
+    
+    Returns:
+        tuple: (termin_list, total_count, total_amount)
+    """
+    # Cari teks dari seksi pembayaran
+    payment_text = _get_payment_section_text(texts)
+    
+    # Pattern untuk menangkap termin dengan berbagai format
+    # Cocokkan bulan dan tahun, lalu kata kunci sebelum Rp
+    termin_pattern = re.compile(
+        r'Termin[-\s]*(\d+)[,\s]*yaitu\s+periode\s+(\w+\s*\d{4})\s*(?:sebesar\s*[:]*\s*)?[:]?\s*Rp\.?([\d\.,]+)',
+        re.IGNORECASE
+    )
+    
+    termin_payments = []
+    total_amount = 0.0
+    
+    # Cari semua matches dalam teks
+    matches = termin_pattern.findall(payment_text)
+    
+    for match in matches:
+        try:
+            termin_num = int(match[0])
+            period = match[1].strip()
+            amount_str = match[2].strip()
+            
+            # Bersihkan amount string dari karakter trailing
+            amount_str = re.sub(r'[^\d\.,]', '', amount_str)
+            # Parse amount dengan handling format Indonesia (titik sebagai thousand separator, koma sebagai decimal)
+            amount = _parse_rupiah_token("Rp " + amount_str)
+            
+            # Buat raw text untuk debugging
+            raw_match = re.search(
+                rf'Termin[-\s]*{termin_num}[^R]*?[Rp\.\s]*{re.escape(amount_str)}[,\.]?',
+                payment_text, re.IGNORECASE
+            )
+            raw_text = raw_match.group(0) if raw_match else f"Termin-{termin_num} {period} {amount_str}"
+            
+            termin_payment = TerminPayment(
+                termin_number=termin_num,
+                period=period,
+                amount=amount,
+                raw_text=raw_text.strip()
+            )
+            
+            termin_payments.append(termin_payment)
+            total_amount += amount
+            
+        except (ValueError, IndexError) as e:
+            # Log error tapi lanjutkan parsing termin lainnya
+            continue
+    
+    # Sort berdasarkan nomor termin
+    termin_payments.sort(key=lambda t: t.termin_number)
+    
+    return termin_payments, len(termin_payments), total_amount
 
 
 # -------------------- Page 1 Extractor (One Time Charge) --------------------
@@ -313,12 +375,29 @@ def extract_from_page1_one_time(ocr_json_page1: Any) -> TelkomContractData:
     # Deteksi metode pembayaran secara dinamis
     method_type, description, confidence = _detect_payment_type(texts)
     
+    # Jika termin, ekstrak detail pembayaran termin
+    termin_payments = None
+    total_termin_count = None
+    total_amount = None
+    
+    if method_type == "termin":
+        termin_list, count, amount = _extract_termin_payments(texts)
+        if termin_list:  # Jika berhasil ekstrak termin
+            termin_payments = termin_list
+            total_termin_count = count
+            total_amount = amount
+            description = f"Pembayaran termin ({count} periode)"
+        else:
+            # Fallback jika deteksi termin gagal
+            method_type = "one_time_charge"
+            description = "Pembayaran termin terdeteksi (gagal ekstrak detail)"
+    
     tata_cara_pembayaran = TataCaraPembayaran(
         method_type=method_type,
         description=description,
-        termin_payments=None,       # placeholder untuk metode lain
-        total_termin_count=None,    # placeholder untuk metode lain
-        total_amount=None,          # placeholder: bisa dihitung kalau kebijakan tertentu
+        termin_payments=termin_payments,
+        total_termin_count=total_termin_count,
+        total_amount=total_amount,
         raw_text=raw_tata or None,
     )
 
