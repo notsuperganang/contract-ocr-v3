@@ -120,6 +120,111 @@ def _slice_after_keyword(texts: List[str], keyword: str, span: int = 12) -> str:
             return " ".join(texts[i : min(i + span, len(texts))]).strip()
     return ""
 
+def _get_payment_section_text(texts: List[str]) -> str:
+    """
+    Ekstrak teks dari seksi pembayaran untuk analisis metode pembayaran.
+    Prioritas: teks di sekitar header TATA CARA PEMBAYARAN, lalu fallback ke seluruh dokumen.
+    """
+    # Cari teks di sekitar header pembayaran dengan span lebih besar
+    payment_section = _slice_after_keyword(texts, "TATA CARA PEMBAYARAN", span=20)
+    if payment_section:
+        return payment_section
+    
+    # Fallback: cari header pembayaran alternatif
+    payment_section = _slice_after_keyword(texts, "PEMBAYARAN", span=20)
+    if payment_section:
+        return payment_section
+        
+    payment_section = _slice_after_keyword(texts, "KETENTUAN PEMBAYARAN", span=20)
+    if payment_section:
+        return payment_section
+    
+    # Fallback terakhir: gabung seluruh teks dokumen
+    return " ".join(texts)
+
+def _normalize_payment_text(text: str) -> str:
+    """
+    Normalisasi teks pembayaran untuk deteksi yang konsisten.
+    """
+    text = text.lower().strip()
+    # Hapus spasi berlebih dan normalize
+    text = re.sub(r'\s+', ' ', text)
+    # Standardisasi singkatan bulan
+    text = text.replace('/bln', ' per bulan')
+    text = text.replace('bln', ' bulan')
+    return text
+
+def _detect_payment_type(texts: List[str]) -> tuple[str, str, str]:
+    """
+    Deteksi metode pembayaran dari teks OCR.
+    
+    Returns:
+        tuple: (method_type, description, confidence)
+        - method_type: "one_time_charge", "recurring", atau "unknown"
+        - description: Deskripsi metode pembayaran
+        - confidence: "high", "medium", "low"
+    """
+    # Ekstrak teks dari seksi pembayaran
+    payment_text = _get_payment_section_text(texts)
+    normalized_text = _normalize_payment_text(payment_text)
+    
+    # Pattern untuk deteksi termin (prioritas tinggi - exclude dari recurring)
+    termin_patterns = [
+        r'\btermin[-\s]*\d+\b',           # Termin-1, Termin 1, etc.
+        r'\btermin\s+(pertama|kedua|ketiga|keempat|kelima)\b',  # Termin pertama, dll
+    ]
+    
+    # Cek eksplisit "One Time Charge" untuk prioritas tinggi
+    if re.search(r'\bone\s*time\s*charge\b', normalized_text, re.I):
+        return "one_time_charge", "One Time Charge", "high"
+    
+    # Cek apakah ada pola termin
+    for pattern in termin_patterns:
+        if re.search(pattern, normalized_text, re.I):
+            # Jika ada termin, kemungkinan bukan recurring
+            return "one_time_charge", "Pembayaran termin terdeteksi", "medium"
+    
+    # Pattern untuk deteksi recurring (Indonesian + English)
+    recurring_patterns = [
+        r'\brecurring\b',                          # Explicit "recurring"
+        r'\bperbulan\b|\bper\s*bulan\b',          # "perbulan", "per bulan"
+        r'\bbulanan\b',                           # "bulanan"
+        r'\bsetiap\s*bulan\b',                    # "setiap bulan"
+        r'\bpembayaran\s*bulanan\b',              # "pembayaran bulanan"
+        r'\btagihan\s*bulanan\b',                 # "tagihan bulanan"
+        r'\blangganan\s*bulanan\b',               # "langganan bulanan"
+        r'\bmonthly\b',                           # "monthly"
+        r'\brecurring\s*monthly\b',               # "recurring monthly"
+        r'\bbilling\s*cycle\s*:\s*monthly\b',     # "billing cycle: monthly"
+        r'\bper\s*/?\s*bulan\b',                  # "per/bulan"
+    ]
+    
+    # Cari pola recurring dalam teks seksi pembayaran (confidence tinggi)
+    payment_section_only = _slice_after_keyword(texts, "TATA CARA PEMBAYARAN", span=20)
+    if payment_section_only:
+        normalized_section = _normalize_payment_text(payment_section_only)
+        for pattern in recurring_patterns:
+            match = re.search(pattern, normalized_section, re.I)
+            if match:
+                matched_phrase = match.group(0)
+                return "recurring", f"Pembayaran bulanan terdeteksi (frasa: '{matched_phrase}')", "high"
+    
+    # Cari pola recurring di seluruh dokumen (confidence medium)
+    for pattern in recurring_patterns:
+        match = re.search(pattern, normalized_text, re.I)
+        if match:
+            matched_phrase = match.group(0)
+            return "recurring", f"Pembayaran bulanan terdeteksi (frasa: '{matched_phrase}')", "medium"
+    
+    # Cek keberadaan header tabel "BULANAN" sebagai indikator recurring
+    # Tapi hanya jika tidak ada indikator One Time Charge yang eksplisit
+    full_text = " ".join(texts)
+    if re.search(r'\bBULANAN\b', full_text, re.I):
+        return "recurring", "Pembayaran bulanan terdeteksi (tabel biaya bulanan)", "medium"
+    
+    # Default: tidak dapat menentukan, assume one_time_charge untuk backward compatibility
+    return "one_time_charge", "Metode pembayaran tidak terdeteksi", "low"
+
 
 # -------------------- Page 1 Extractor (One Time Charge) --------------------
 def extract_from_page1_one_time(ocr_json_page1: Any) -> TelkomContractData:
@@ -202,11 +307,15 @@ def extract_from_page1_one_time(ocr_json_page1: Any) -> TelkomContractData:
         )
     ]
 
-    # --- Tata Cara Pembayaran (One Time Charge) ---
+    # --- Tata Cara Pembayaran (Dynamic Detection) ---
     raw_tata = _slice_after_keyword(texts, "TATA CARA PEMBAYARAN", span=16)
+    
+    # Deteksi metode pembayaran secara dinamis
+    method_type, description, confidence = _detect_payment_type(texts)
+    
     tata_cara_pembayaran = TataCaraPembayaran(
-        method_type="one_time_charge",
-        description="One Time Charge",
+        method_type=method_type,
+        description=description,
         termin_payments=None,       # placeholder untuk metode lain
         total_termin_count=None,    # placeholder untuk metode lain
         total_amount=None,          # placeholder: bisa dihitung kalau kebijakan tertentu
