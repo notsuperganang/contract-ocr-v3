@@ -26,7 +26,7 @@ from loguru import logger
 from paddleocr import PPStructureV3
 from pdf2image import convert_from_path
 
-from app.config import settings
+from app.config import settings, get_pipeline_params
 
 
 class PipelineProcessor:
@@ -48,60 +48,89 @@ class PipelineProcessor:
             raise
     
     def _initialize_pipeline(self):
-        """Initialize PP-StructureV3 pipeline with targeted improvements for missing '1' digit"""
+        """Initialize PP-StructureV3 pipeline using centralized configuration"""
         try:
-            logger.info("Initializing PP-StructureV3 pipeline...")
+            if settings.log_config_details:
+                logger.info("="*80)
+                logger.info("🏭 INITIALIZING PP-STRUCTUREV3 PIPELINE")
+                logger.info("="*80)
+            
+            # Get pipeline parameters from centralized config
+            pipeline_params = get_pipeline_params(settings)
+            
+            if settings.log_model_loading:
+                logger.info("📋 Pipeline Parameters from Config:")
+                for key, value in pipeline_params.items():
+                    logger.info(f"   {key}: {value}")
+                
+                logger.info(f"🎯 Pipeline Strategy:")
+                logger.info(f"   Model Selection: {'CUSTOM' if any(k.endswith('_model_name') for k in pipeline_params) else 'DEFAULT'}")
+                logger.info(f"   Contract Optimized: ✅ (seal={pipeline_params['use_seal_recognition']}, formula={pipeline_params['use_formula_recognition']})")
+                logger.info(f"   HPI Acceleration: {'✅' if pipeline_params['enable_hpi'] else '❌'}")
+                logger.info(f"   Table Recognition: {'✅' if pipeline_params['use_table_recognition'] else '❌'}")
+            
             t_load_start = time.perf_counter()
             
-            self.pipeline = PPStructureV3(
-                # Model configuration
-                text_recognition_model_name=settings.text_recognition_model,
-                text_detection_model_name=settings.text_detection_model,
-                layout_detection_model_name=settings.layout_detection_model,
-                
-                # Document processing
-                use_doc_orientation_classify=settings.use_doc_orientation_classify,
-                use_doc_unwarping=settings.use_doc_unwarping,
-                use_textline_orientation=settings.use_textline_orientation,
-                
-                # ✅ TABLE RECOGNITION - ENABLED FOR SERVICE COUNTS
-                use_table_recognition=settings.use_table_recognition,  # True
-                
-                # Other recognition features
-                use_seal_recognition=settings.use_seal_recognition,    # False
-                use_formula_recognition=settings.use_formula_recognition,  # False
-                
-                # ✅ TARGETED TEXT DETECTION - MATCHING CONFIG.PY EXACTLY
-                text_det_thresh=settings.text_det_thresh,              # 0.05 (hyper-aggressive)
-                text_det_box_thresh=settings.text_det_box_thresh,      # 0.2 (ultra-low)
-                text_det_unclip_ratio=settings.text_det_unclip_ratio,  # 1.8 (EXPANDED capture)
-                text_rec_score_thresh=settings.text_rec_score_thresh,  # 0.0 (accept all)
-                text_det_limit_side_len=settings.text_det_limit_side_len,  # 1600 (higher resolution)
-                text_det_limit_type=settings.text_det_limit_type,      # "max"
-                
-                # ✅ LAYOUT DETECTION - ENHANCED FOR EDGE CASES
-                layout_threshold=settings.layout_threshold,            # 0.4 (lower for more elements)
-                layout_nms=settings.layout_nms,                       # True (keep accuracy)
-                
-                # ✅ TEXT RECOGNITION - IMPROVED BATCH PROCESSING
-                text_recognition_batch_size=settings.text_recognition_batch_size,  # 4 (efficiency)
-                
-                # Performance settings
-                enable_hpi=settings.enable_hpi,    # True (for accuracy)
-                device=settings.device             # CPU
-            )
+            if settings.log_model_loading:
+                logger.info("🔄 Creating PPStructureV3 pipeline...")
+            
+            # Initialize pipeline with centralized config
+            self.pipeline = PPStructureV3(**pipeline_params)
             
             t_load_end = time.perf_counter()
             t_load = t_load_end - t_load_start
             
-            logger.info(f"Pipeline initialized with TARGETED improvements (load time: {t_load:.3f}s)")
-            logger.info(f"Text detection: thresh=0.05, box_thresh=0.2, unclip_ratio=1.8, resolution=1600")
-            logger.info(f"Layout detection: threshold=0.4, batch_size=4")
-            logger.info(f"Target: Missing '1' for Non-Connectivity TELKOM")
+            if settings.log_performance_metrics:
+                logger.info("="*80)
+                logger.info("✅ PIPELINE INITIALIZATION COMPLETE")
+                logger.info("="*80)
+                logger.info(f"⏱️  Initialization Time: {t_load:.3f}s")
+                logger.info(f"🎯 Target: Telkom contract processing with optimal accuracy")
+                logger.info(f"💾 Config Source: Centralized (app/config.py)")
+                logger.info("="*80)
+            else:
+                logger.info(f"Pipeline initialized (load time: {t_load:.3f}s)")
+            
+            # Log model verification if enabled
+            if settings.log_debug_model_info:
+                self._log_model_verification()
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize pipeline: {str(e)}")
+            logger.error(f"💡 Check PaddlePaddle version compatibility and HPI dependencies")
+            raise
+
+    def _log_model_verification(self):
+        """Log detailed model verification information"""
+        try:
+            logger.info("🔍 MODEL VERIFICATION:")
+            
+            if hasattr(self.pipeline, 'paddlex_pipeline'):
+                px_pipeline = self.pipeline.paddlex_pipeline
+                logger.info(f"   PaddleX Pipeline: {type(px_pipeline).__name__}")
+                
+                if hasattr(px_pipeline, '_pipeline'):
+                    internal = px_pipeline._pipeline
+                    logger.info(f"   Internal Pipeline: {type(internal).__name__}")
+                    
+                    # Try to get model information
+                    components = []
+                    for attr_name in dir(internal):
+                        if 'model' in attr_name.lower() and not attr_name.startswith('_'):
+                            attr_value = getattr(internal, attr_name, None)
+                            if attr_value is not None:
+                                components.append(f"{attr_name}: {type(attr_value).__name__}")
+                    
+                    if components:
+                        logger.info("   Pipeline Components:")
+                        for component in components:
+                            logger.info(f"     • {component}")
+            
+            logger.info("✅ Model verification complete")
             
         except Exception as e:
-            logger.error(f"Failed to initialize pipeline: {str(e)}")
-            raise
+            logger.warning(f"⚠️  Could not verify models: {str(e)}")
+            logger.warning("   This is not critical - pipeline should still work")
     
     def cut_pdf_to_first_two_pages(self, input_path: str, output_path: str) -> bool:
         """Cut PDF to first 2 pages using PyMuPDF"""
@@ -132,7 +161,7 @@ class PipelineProcessor:
             logger.error(f"Error cutting PDF {input_path}: {str(e)}")
             return False
     
-    def pdf_to_images(self, pdf_path: str, dpi: int = 400) -> list:
+    def pdf_to_images(self, pdf_path: str, dpi: int = 200) -> list:
         """Convert PDF to images using pdf2image"""
         try:
             logger.info(f"Converting PDF to images @ {dpi} DPI: {os.path.basename(pdf_path)}")
@@ -159,31 +188,54 @@ class PipelineProcessor:
             return []
     
     def process_single_pdf(self, pdf_path: str) -> dict:
-        """Process a single PDF file using the working blueprint approach"""
+        """Process a single PDF file with comprehensive logging"""
         try:
             pdf_name = Path(pdf_path).stem
-            logger.info(f"Processing: {pdf_name}")
+            
+            if settings.log_processing_steps:
+                logger.info("="*80)
+                logger.info(f"📄 PROCESSING: {pdf_name}")
+                logger.info("="*80)
+            else:
+                logger.info(f"Processing: {pdf_name}")
+                
             t_all_start = time.perf_counter()
             
             # Step 1: Cut PDF to first 2 pages
+            if settings.log_processing_steps:
+                logger.info("📋 STEP 1: Preparing PDF...")
+            
             temp_pdf_path = os.path.join(self.temp_dir, f"{pdf_name}_first2pages.pdf")
             if not self.cut_pdf_to_first_two_pages(pdf_path, temp_pdf_path):
                 raise Exception(f"Failed to cut PDF: {pdf_path}")
             
             # Step 2: Convert PDF to images
-            image_paths = self.pdf_to_images(temp_pdf_path, dpi=400)
+            if settings.log_processing_steps:
+                logger.info("🖼️  STEP 2: Converting PDF to images...")
+                
+            image_paths = self.pdf_to_images(temp_pdf_path, dpi=200)
             if not image_paths:
                 raise Exception(f"Failed to convert PDF to images: {temp_pdf_path}")
+                
+            if settings.log_processing_steps:
+                logger.info(f"   ✅ Generated {len(image_paths)} images for processing")
             
             # Step 3: Process each image with pipeline and save JSON results
+            if settings.log_processing_steps:
+                logger.info("🔍 STEP 3: Running OCR on each page...")
+                
             per_page_ocr_times = []
             t_ocr_total_start = time.perf_counter()
             
             json_output_dirs = []
             
-            for img_path in image_paths:
+            for i, img_path in enumerate(image_paths, 1):
                 base_name = os.path.splitext(os.path.basename(img_path))[0]
-                logger.info(f"Processing image: {base_name}")
+                
+                if settings.log_processing_steps:
+                    logger.info(f"   📄 Processing Page {i}/{len(image_paths)}: {base_name}")
+                else:
+                    logger.info(f"Processing image: {base_name}")
                 
                 t_page_start = time.perf_counter()
                 
@@ -202,7 +254,11 @@ class PipelineProcessor:
                 t_page = t_page_end - t_page_start
                 per_page_ocr_times.append(t_page)
                 
-                logger.info(f"  ⤷ OCR+parse completed: {t_page:.3f}s (JSON saved to: {save_dir})")
+                if settings.log_performance_metrics:
+                    logger.info(f"     ⏱️  Page {i} completed: {t_page:.3f}s")
+                    logger.info(f"     💾 Results saved to: {os.path.basename(save_dir)}")
+                else:
+                    logger.info(f"  ⤷ OCR+parse completed: {t_page:.3f}s (JSON saved to: {save_dir})")
             
             t_ocr_total_end = time.perf_counter()
             t_ocr_total = t_ocr_total_end - t_ocr_total_start
@@ -213,7 +269,20 @@ class PipelineProcessor:
             # Clean up temporary files
             self._cleanup_temp_files([temp_pdf_path] + image_paths)
             
-            logger.info(f"Processing completed - Total time: {t_all:.3f}s, OCR time: {t_ocr_total:.3f}s")
+            # Final processing summary
+            if settings.log_performance_metrics:
+                logger.info("="*80)
+                logger.info("✅ PROCESSING COMPLETE")
+                logger.info("="*80)
+                logger.info(f"📊 Performance Summary:")
+                logger.info(f"   ⏱️  Total Time: {t_all:.3f}s")
+                logger.info(f"   🔍 OCR Time: {t_ocr_total:.3f}s ({(t_ocr_total/t_all*100):.1f}%)")
+                logger.info(f"   📄 Pages Processed: {len(image_paths)}")
+                logger.info(f"   ⚡ Avg per Page: {mean(per_page_ocr_times):.3f}s")
+                logger.info(f"   📁 Output Directories: {len(json_output_dirs)}")
+                logger.info("="*80)
+            else:
+                logger.info(f"Processing completed - Total time: {t_all:.3f}s, OCR time: {t_ocr_total:.3f}s")
             
             # Return processing summary
             return {
@@ -296,7 +365,8 @@ def main():
     
     # Define test files to process
     test_files = [
-        "tests/test_samples/KONTRAK PT LKMS MAHIRAH MUAMALAH  2025 VALIDASI.pdf",
+        "tests/test_samples/KB SMKN 1 BIREUN TTD 2024 VALIDASI.pdf",
+        "tests/test_samples/KONTRAK PT LKMS MAHIRAH MUAMALAH  2025 VALIDASI.pdf"
     ]
     
     processor = None
